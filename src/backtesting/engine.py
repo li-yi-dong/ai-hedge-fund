@@ -22,6 +22,11 @@ from src.tools.api import (
     get_financial_metrics,
     get_insider_trades,
 )
+from src.utils.api_key import (
+    get_financial_datasets_api_key,
+    get_market_data_api_key,
+    get_market_data_provider,
+)
 
 
 class BacktestEngine:
@@ -44,6 +49,9 @@ class BacktestEngine:
         model_provider: str,
         selected_analysts: list[str] | None,
         initial_margin_requirement: float,
+        market_data_provider: str | None = None,
+        market_data_api_key: str | None = None,
+        financial_datasets_api_key: str | None = None,
     ) -> None:
         self._agent = agent
         self._tickers = tickers
@@ -53,6 +61,12 @@ class BacktestEngine:
         self._model_name = model_name
         self._model_provider = model_provider
         self._selected_analysts = selected_analysts
+        self._market_data_provider = get_market_data_provider({"market_data_provider": market_data_provider})
+        self._market_data_api_key = market_data_api_key or get_market_data_api_key(
+            {"market_data_provider": self._market_data_provider},
+            provider=self._market_data_provider,
+        )
+        self._financial_datasets_api_key = financial_datasets_api_key or get_financial_datasets_api_key()
 
         self._portfolio = Portfolio(
             tickers=tickers,
@@ -65,7 +79,10 @@ class BacktestEngine:
         self._results = OutputBuilder(initial_capital=self._initial_capital)
 
         # Benchmark calculator
-        self._benchmark = BenchmarkCalculator()
+        self._benchmark = BenchmarkCalculator(
+            api_key=self._market_data_api_key,
+            provider=self._market_data_provider,
+        )
 
         self._portfolio_values: list[PortfolioValuePoint] = []
         self._table_rows: list[list] = []
@@ -84,13 +101,42 @@ class BacktestEngine:
         start_date_str = start_date_dt.strftime("%Y-%m-%d")
 
         for ticker in self._tickers:
-            get_prices(ticker, start_date_str, self._end_date)
-            get_financial_metrics(ticker, self._end_date, limit=10)
-            get_insider_trades(ticker, self._end_date, start_date=self._start_date, limit=1000)
-            get_company_news(ticker, self._end_date, start_date=self._start_date, limit=1000)
-        
+            get_prices(
+                ticker,
+                start_date_str,
+                self._end_date,
+                api_key=self._market_data_api_key,
+                provider=self._market_data_provider,
+            )
+            get_financial_metrics(
+                ticker,
+                self._end_date,
+                limit=10,
+                api_key=self._financial_datasets_api_key,
+            )
+            get_insider_trades(
+                ticker,
+                self._end_date,
+                start_date=self._start_date,
+                limit=1000,
+                api_key=self._financial_datasets_api_key,
+            )
+            get_company_news(
+                ticker,
+                self._end_date,
+                start_date=self._start_date,
+                limit=1000,
+                api_key=self._financial_datasets_api_key,
+            )
+
         # Preload data for SPY for benchmark comparison
-        get_prices("SPY", self._start_date, self._end_date)
+        get_prices(
+            "SPY",
+            self._start_date,
+            self._end_date,
+            api_key=self._market_data_api_key,
+            provider=self._market_data_provider,
+        )
 
 
     def run_backtest(self) -> PerformanceMetrics:
@@ -116,7 +162,13 @@ class BacktestEngine:
                 missing_data = False
                 for ticker in self._tickers:
                     try:
-                        price_data = get_price_data(ticker, previous_date_str, current_date_str)
+                        price_data = get_price_data(
+                            ticker,
+                            previous_date_str,
+                            current_date_str,
+                            api_key=self._market_data_api_key,
+                            provider=self._market_data_provider,
+                        )
                         if price_data.empty:
                             missing_data = True
                             break

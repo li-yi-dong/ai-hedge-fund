@@ -25,6 +25,7 @@ import { useFlowConnection } from '@/hooks/use-flow-connection';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useNodeState } from '@/hooks/use-node-state';
 import { cn, formatKeyboardShortcut } from '@/lib/utils';
+import { MarketDataProvider } from '@/services/types';
 import { type PortfolioStartNode } from '../types';
 import { NodeShell } from './node-shell';
 
@@ -138,6 +139,11 @@ export function PortfolioStartNode({
   };
 
   const handlePlay = () => {
+    const savedMarketDataProvider = localStorage.getItem('marketDataProvider');
+    const marketDataProvider = savedMarketDataProvider === MarketDataProvider.TUSHARE_PRO
+      ? MarketDataProvider.TUSHARE_PRO
+      : MarketDataProvider.FINANCIAL_DATASETS;
+
     // Expand bottom panel and set to output tab if backtest
     if (runMode === 'backtest') {
       expandBottomPanel();
@@ -227,6 +233,7 @@ export function PortfolioStartNode({
         margin_requirement: 0.0, // Default margin requirement
         model_name: undefined,
         model_provider: undefined,
+        market_data_provider: marketDataProvider,
         // Pass portfolio positions to backend
         portfolio_positions: portfolioPositions,
       });
@@ -246,6 +253,7 @@ export function PortfolioStartNode({
         // No global model - each agent uses its own model or system default
         model_name: undefined,
         model_provider: undefined,
+        market_data_provider: marketDataProvider,
         start_date: threeMonthsAgo.toISOString().split('T')[0],
         end_date: today.toISOString().split('T')[0],
         initial_cash: parseFloat(initialCash) || 100000,

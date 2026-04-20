@@ -1,9 +1,18 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { apiKeysService } from '@/services/api-keys-api';
-import { Eye, EyeOff, Key, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { MarketDataProvider } from '@/services/types';
+import { Check, ChevronDown, Eye, EyeOff, Key, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface ApiKey {
   key: string;
@@ -13,13 +22,41 @@ interface ApiKey {
   placeholder: string;
 }
 
-const FINANCIAL_API_KEYS: ApiKey[] = [
+interface MarketDataProviderOption {
+  key: MarketDataProvider;
+  label: string;
+  description: string;
+  keys: ApiKey[];
+}
+
+const FINANCIAL_API_PROVIDERS: MarketDataProviderOption[] = [
   {
-    key: 'FINANCIAL_DATASETS_API_KEY',
-    label: 'Financial Datasets API',
-    description: 'For getting financial data to power the hedge fund',
-    url: 'https://financialdatasets.ai/',
-    placeholder: 'your-financial-datasets-api-key'
+    key: MarketDataProvider.FINANCIAL_DATASETS,
+    label: 'Financial Datasets',
+    description: 'Current default provider for the repo\'s normalized financial market data layer.',
+    keys: [
+      {
+        key: 'FINANCIAL_DATASETS_API_KEY',
+        label: 'Financial Datasets API',
+        description: 'For getting financial data to power the hedge fund',
+        url: 'https://financialdatasets.ai/',
+        placeholder: 'your-financial-datasets-api-key'
+      }
+    ]
+  },
+  {
+    key: MarketDataProvider.TUSHARE_PRO,
+    label: 'Tushare Pro',
+    description: 'China-market data provider for the new prices-first integration path.',
+    keys: [
+      {
+        key: 'TUSHARE_PRO_API_KEY',
+        label: 'Tushare Pro Token',
+        description: 'Used as the Tushare Pro token in API requests',
+        url: 'https://tushare.pro/',
+        placeholder: 'your-tushare-pro-token'
+      }
+    ]
   }
 ];
 
@@ -87,6 +124,13 @@ export function ApiKeysSettings() {
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [marketDataProvider, setMarketDataProvider] = useState<MarketDataProvider>(MarketDataProvider.FINANCIAL_DATASETS);
+  const [providerOpen, setProviderOpen] = useState(false);
+
+  const selectedFinancialProvider = useMemo(
+    () => FINANCIAL_API_PROVIDERS.find((provider) => provider.key === marketDataProvider) || FINANCIAL_API_PROVIDERS[0],
+    [marketDataProvider]
+  );
 
   // Load API keys from backend on component mount
   useEffect(() => {
@@ -111,6 +155,11 @@ export function ApiKeysSettings() {
       }
       
       setApiKeys(keysData);
+
+      const savedProvider = localStorage.getItem('marketDataProvider');
+      if (savedProvider === MarketDataProvider.TUSHARE_PRO || savedProvider === MarketDataProvider.FINANCIAL_DATASETS) {
+        setMarketDataProvider(savedProvider as MarketDataProvider);
+      }
     } catch (err) {
       console.error('Failed to load API keys:', err);
       setError('Failed to load API keys. Please try again.');
@@ -149,6 +198,12 @@ export function ApiKeysSettings() {
     }
   };
 
+  const handleMarketDataProviderChange = (provider: MarketDataProvider) => {
+    setMarketDataProvider(provider);
+    localStorage.setItem('marketDataProvider', provider);
+    setProviderOpen(false);
+  };
+
   const toggleKeyVisibility = (key: string) => {
     setVisibleKeys(prev => ({
       ...prev,
@@ -170,6 +225,54 @@ export function ApiKeysSettings() {
     }
   };
 
+  const renderApiKeyFields = (keys: ApiKey[]) => (
+    <div className="space-y-4">
+      {keys.map((apiKey) => (
+        <div key={apiKey.key} className="space-y-2">
+          <button
+            className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
+            onClick={() => window.open(apiKey.url, '_blank')}
+          >
+            {apiKey.label}
+          </button>
+          <div className="relative">
+            <Input
+              type={visibleKeys[apiKey.key] ? 'text' : 'password'}
+              placeholder={apiKey.placeholder}
+              value={apiKeys[apiKey.key] || ''}
+              onChange={(e) => handleKeyChange(apiKey.key, e.target.value)}
+              className="pr-20"
+            />
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {apiKeys[apiKey.key] && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500"
+                  onClick={() => clearKey(apiKey.key)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => toggleKeyVisibility(apiKey.key)}
+              >
+                {visibleKeys[apiKey.key] ? (
+                  <EyeOff className="h-3 w-3" />
+                ) : (
+                  <Eye className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const renderApiKeySection = (title: string, description: string, keys: ApiKey[], icon: React.ReactNode) => (
     <Card className="bg-panel border-gray-700 dark:border-gray-700">
       <CardHeader>
@@ -179,50 +282,8 @@ export function ApiKeysSettings() {
         </CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {keys.map((apiKey) => (
-          <div key={apiKey.key} className="space-y-2">
-                         <button
-               className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
-               onClick={() => window.open(apiKey.url, '_blank')}
-             >
-               {apiKey.label}
-             </button>
-            <div className="relative">
-              <Input
-                type={visibleKeys[apiKey.key] ? 'text' : 'password'}
-                placeholder={apiKey.placeholder}
-                value={apiKeys[apiKey.key] || ''}
-                onChange={(e) => handleKeyChange(apiKey.key, e.target.value)}
-                className="pr-20"
-              />
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {apiKeys[apiKey.key] && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500"
-                    onClick={() => clearKey(apiKey.key)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => toggleKeyVisibility(apiKey.key)}
-                >
-                  {visibleKeys[apiKey.key] ? (
-                    <EyeOff className="h-3 w-3" />
-                  ) : (
-                    <Eye className="h-3 w-3" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
+      <CardContent>
+        {renderApiKeyFields(keys)}
       </CardContent>
     </Card>
   );
@@ -284,12 +345,66 @@ export function ApiKeysSettings() {
       )}
 
       {/* Financial Data API Keys */}
-      {renderApiKeySection(
-        'Financial Data',
-        'API keys for accessing financial market data and datasets.',
-        FINANCIAL_API_KEYS,
-        <Key className="h-4 w-4" />
-      )}
+      <Card className="bg-panel border-gray-700 dark:border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-lg font-medium text-primary flex items-center gap-2">
+            <Key className="h-4 w-4" />
+            Financial Data
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Select the market-data provider and manage its credentials. Financial Datasets stays available during the Tushare rollout.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-primary">Active provider</div>
+            <Popover open={providerOpen} onOpenChange={setProviderOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={providerOpen}
+                  className="w-full justify-between bg-node border border-border hover:bg-accent"
+                >
+                  <span>{selectedFinancialProvider.label}</span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-node border border-border shadow-lg">
+                <Command className="bg-node">
+                  <CommandList className="bg-node">
+                    <CommandEmpty>No provider found.</CommandEmpty>
+                    <CommandGroup>
+                      {FINANCIAL_API_PROVIDERS.map((provider) => (
+                        <CommandItem
+                          key={provider.key}
+                          value={provider.key}
+                          className="cursor-pointer bg-node hover:bg-accent"
+                          onSelect={() => handleMarketDataProviderChange(provider.key)}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${marketDataProvider === provider.key ? 'opacity-100' : 'opacity-0'}`} />
+                          <div className="flex flex-col items-start">
+                            <span>{provider.label}</span>
+                            <span className="text-xs text-muted-foreground">{provider.description}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="rounded-md border border-border/60 bg-node/40 p-4 space-y-4">
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-primary">{selectedFinancialProvider.label}</div>
+              <p className="text-sm text-muted-foreground">{selectedFinancialProvider.description}</p>
+            </div>
+            {renderApiKeyFields(selectedFinancialProvider.keys)}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* LLM API Keys */}
       {renderApiKeySection(

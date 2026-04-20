@@ -21,9 +21,131 @@ from src.data.models import (
     InsiderTradeResponse,
     CompanyFactsResponse,
 )
+from src.utils.api_key import (
+    FINANCIAL_DATASETS_PROVIDER,
+    TUSHARE_PRO_API_KEY_NAME,
+    TUSHARE_PRO_PROVIDER,
+    normalize_market_data_provider,
+)
 
 # Global cache instance
 _cache = get_cache()
+
+
+def _normalize_date_for_tushare(date_value: str) -> str:
+    return date_value.replace("-", "")
+
+
+def _resolve_market_data_provider(provider: str | None = None) -> str:
+    return normalize_market_data_provider(provider or os.getenv("MARKET_DATA_PROVIDER"))
+
+
+def _resolve_market_data_api_key(api_key: str | None = None, provider: str | None = None) -> str | None:
+    if api_key:
+        return api_key
+
+    resolved_provider = _resolve_market_data_provider(provider)
+    if resolved_provider == TUSHARE_PRO_PROVIDER:
+        return os.getenv(TUSHARE_PRO_API_KEY_NAME)
+
+    return os.environ.get("FINANCIAL_DATASETS_API_KEY")
+
+
+def _resolve_price_provider(provider: str | None = None) -> str:
+    return _resolve_market_data_provider(provider)
+
+
+def _provider_cache_key(provider: str, cache_key: str) -> str:
+    return f"{provider}:{cache_key}"
+
+
+def _tushare_request(api_name: str, params: dict, fields: list[str], token: str | None = None) -> dict | None:
+    tushare_token = token or _resolve_market_data_api_key(provider=TUSHARE_PRO_PROVIDER)
+    if not tushare_token:
+        logger.warning("Missing Tushare Pro token")
+        return None
+
+    response = _make_api_request(
+        "http://api.tushare.pro",
+        {"Content-Type": "application/json"},
+        method="POST",
+        json_data={
+            "api_name": api_name,
+            "token": tushare_token,
+            "params": params,
+            "fields": ",".join(fields),
+        },
+    )
+    if response.status_code != 200:
+        return None
+
+    try:
+        data = response.json()
+    except Exception as e:
+        logger.warning("Failed to parse Tushare response for %s: %s", api_name, e)
+        return None
+
+    if data.get("code") != 0:
+        logger.warning("Tushare API %s failed: %s (%s)", api_name, data.get("msg"), data.get("code"))
+        return None
+
+    return data.get("data")
+
+
+def _map_tushare_daily_to_prices(ticker: str, payload: dict | None) -> list[Price]:
+    if not payload:
+        return []
+
+    fields = payload.get("fields") or []
+    items = payload.get("items") or []
+    if not fields or not items:
+        return []
+
+    prices = []
+    for item in items:
+        row = dict(zip(fields, item))
+        trade_date = row.get("trade_date")
+        if not trade_date:
+            continue
+
+        trade_date_str = str(trade_date)
+        normalized_date = f"{trade_date_str[0:4]}-{trade_date_str[4:6]}-{trade_date_str[6:8]}T00:00:00Z"
+        volume = row.get("vol")
+        try:
+            volume_value = int(float(volume) * 100) if volume is not None else 0
+        except (TypeError, ValueError):
+            volume_value = 0
+
+        try:
+            prices.append(
+                Price(
+                    open=float(row.get("open") or 0),
+                    close=float(row.get("close") or 0),
+                    high=float(row.get("high") or 0),
+                    low=float(row.get("low") or 0),
+                    volume=volume_value,
+                    time=normalized_date,
+                )
+            )
+        except (TypeError, ValueError) as e:
+            logger.warning("Failed to map Tushare daily row for %s: %s", ticker, e)
+
+    prices.sort(key=lambda price: price.time)
+    return prices
+
+
+def _get_tushare_prices(ticker: str, start_date: str, end_date: str, api_key: str | None = None) -> list[Price]:
+    payload = _tushare_request(
+        api_name="daily",
+        token=api_key,
+        params={
+            "ts_code": ticker,
+            "start_date": _normalize_date_for_tushare(start_date),
+            "end_date": _normalize_date_for_tushare(end_date),
+        },
+        fields=["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount"],
+    )
+    return _map_tushare_daily_to_prices(ticker, payload)
 
 
 def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: dict = None, max_retries: int = 3) -> requests.Response:
@@ -60,18 +182,23 @@ def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: d
         return response
 
 
-def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
+def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None, provider: str | None = None) -> list[Price]:
     """Fetch price data from cache or API."""
-    # Create a cache key that includes all parameters to ensure exact matches
-    cache_key = f"{ticker}_{start_date}_{end_date}"
-    
-    # Check cache first - simple exact match
+    resolved_provider = _resolve_price_provider(provider)
+    cache_key = _provider_cache_key(resolved_provider, f"{ticker}_{start_date}_{end_date}")
+
     if cached_data := _cache.get_prices(cache_key):
         return [Price(**price) for price in cached_data]
 
-    # If not in cache, fetch from API
+    if resolved_provider == TUSHARE_PRO_PROVIDER:
+        prices = _get_tushare_prices(ticker, start_date, end_date, api_key=api_key)
+        if not prices:
+            return []
+        _cache.set_prices(cache_key, [p.model_dump() for p in prices])
+        return prices
+
     headers = {}
-    financial_api_key = api_key or os.environ.get("FINANCIAL_DATASETS_API_KEY")
+    financial_api_key = _resolve_market_data_api_key(api_key=api_key, provider=resolved_provider)
     if financial_api_key:
         headers["X-API-KEY"] = financial_api_key
 
@@ -80,7 +207,6 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
     if response.status_code != 200:
         return []
 
-    # Parse response with Pydantic model
     try:
         price_response = PriceResponse(**response.json())
         prices = price_response.prices
@@ -91,7 +217,6 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
     if not prices:
         return []
 
-    # Cache the results using the comprehensive cache key
     _cache.set_prices(cache_key, [p.model_dump() for p in prices])
     return prices
 
@@ -316,13 +441,18 @@ def get_market_cap(
     ticker: str,
     end_date: str,
     api_key: str = None,
+    provider: str | None = None,
 ) -> float | None:
     """Fetch market cap from the API."""
-    # Check if end_date is today
+    resolved_provider = _resolve_market_data_provider(provider)
+
+    if resolved_provider == TUSHARE_PRO_PROVIDER:
+        logger.info("Market cap is not supported for Tushare Pro in the prices-first rollout")
+        return None
+
     if end_date == datetime.datetime.now().strftime("%Y-%m-%d"):
-        # Get the market cap from company facts API
         headers = {}
-        financial_api_key = api_key or os.environ.get("FINANCIAL_DATASETS_API_KEY")
+        financial_api_key = _resolve_market_data_api_key(api_key=api_key, provider=resolved_provider)
         if financial_api_key:
             headers["X-API-KEY"] = financial_api_key
 
@@ -361,6 +491,6 @@ def prices_to_df(prices: list[Price]) -> pd.DataFrame:
 
 
 # Update the get_price_data function to use the new functions
-def get_price_data(ticker: str, start_date: str, end_date: str, api_key: str = None) -> pd.DataFrame:
-    prices = get_prices(ticker, start_date, end_date, api_key=api_key)
+def get_price_data(ticker: str, start_date: str, end_date: str, api_key: str = None, provider: str | None = None) -> pd.DataFrame:
+    prices = get_prices(ticker, start_date, end_date, api_key=api_key, provider=provider)
     return prices_to_df(prices)

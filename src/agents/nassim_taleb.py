@@ -20,7 +20,7 @@ from src.tools.api import (
 )
 from src.utils.llm import call_llm
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
+from src.utils.api_key import get_financial_datasets_api_key_from_state, get_market_data_api_key_from_state, get_market_data_provider_from_state
 
 
 class NassimTalebSignal(BaseModel):
@@ -34,7 +34,9 @@ def nassim_taleb_agent(state: AgentState, agent_id: str = "nassim_taleb_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    api_key = get_market_data_api_key_from_state(state)
+    provider = get_market_data_provider_from_state(state)
+    financial_api_key = get_financial_datasets_api_key_from_state(state)
 
     # Look one year back for insider trades and news
     start_date = (datetime.fromisoformat(end_date) - timedelta(days=365)).date().isoformat()
@@ -44,11 +46,11 @@ def nassim_taleb_agent(state: AgentState, agent_id: str = "nassim_taleb_agent"):
 
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching price data")
-        prices = get_prices(ticker, start_date, end_date, api_key=api_key)
+        prices = get_prices(ticker, start_date, end_date, api_key=api_key, provider=provider)
         prices_df = prices_to_df(prices) if prices else pd.DataFrame()
 
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=10, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=10, api_key=financial_api_key)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         line_items = search_line_items(
@@ -69,17 +71,17 @@ def nassim_taleb_agent(state: AgentState, agent_id: str = "nassim_taleb_agent"):
             end_date,
             period="ttm",
             limit=5,
-            api_key=api_key,
+            api_key=financial_api_key,
         )
 
         progress.update_status(agent_id, ticker, "Fetching insider trades")
-        insider_trades = get_insider_trades(ticker, end_date=end_date, start_date=start_date)
+        insider_trades = get_insider_trades(ticker, end_date=end_date, start_date=start_date, api_key=financial_api_key)
 
         progress.update_status(agent_id, ticker, "Fetching company news")
-        news = get_company_news(ticker, end_date=end_date, start_date=start_date, limit=100)
+        news = get_company_news(ticker, end_date=end_date, start_date=start_date, limit=100, api_key=financial_api_key)
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date, api_key=financial_api_key, provider="FINANCIAL_DATASETS")
 
         # Run sub-analyses
         progress.update_status(agent_id, ticker, "Analyzing tail risk")

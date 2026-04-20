@@ -12,6 +12,7 @@ from src.tools.api import (
     get_financial_metrics,
     get_insider_trades,
 )
+from src.utils.api_key import get_financial_datasets_api_key, get_market_data_api_key, get_market_data_provider
 from app.backend.services.graph import run_graph_async, parse_hedge_fund_response
 from app.backend.services.portfolio import create_portfolio
 
@@ -227,13 +228,15 @@ class BacktestService:
         end_date_dt = datetime.strptime(self.end_date, "%Y-%m-%d")
         start_date_dt = end_date_dt - relativedelta(years=1)
         start_date_str = start_date_dt.strftime("%Y-%m-%d")
-        api_key = self.request.api_keys.get("FINANCIAL_DATASETS_API_KEY")
+        provider = get_market_data_provider(self.request)
+        api_key = get_market_data_api_key(self.request, provider=provider)
+        financial_api_key = get_financial_datasets_api_key(self.request)
 
         for ticker in self.tickers:
-            get_prices(ticker, start_date_str, self.end_date, api_key=api_key)
-            get_financial_metrics(ticker, self.end_date, limit=10, api_key=api_key)
-            get_insider_trades(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=api_key)
-            get_company_news(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=api_key)
+            get_prices(ticker, start_date_str, self.end_date, api_key=api_key, provider=provider)
+            get_financial_metrics(ticker, self.end_date, limit=10, api_key=financial_api_key)
+            get_insider_trades(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
+            get_company_news(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
 
     def _update_performance_metrics(self, performance_metrics: Dict[str, Any]):
         """Update performance metrics using daily returns."""
@@ -333,10 +336,12 @@ class BacktestService:
             try:
                 current_prices = {}
                 missing_data = False
+                provider = get_market_data_provider(self.request)
+                api_key = get_market_data_api_key(self.request, provider=provider)
 
                 for ticker in self.tickers:
                     try:
-                        price_data = get_price_data(ticker, previous_date_str, current_date_str)
+                        price_data = get_price_data(ticker, previous_date_str, current_date_str, api_key=api_key, provider=provider)
                         if price_data.empty:
                             missing_data = True
                             break

@@ -13,6 +13,11 @@ class FlowRunStatus(str, Enum):
     ERROR = "ERROR"
 
 
+class MarketDataProvider(str, Enum):
+    FINANCIAL_DATASETS = "FINANCIAL_DATASETS"
+    TUSHARE_PRO = "TUSHARE_PRO"
+
+
 class AgentModelConfig(BaseModel):
     agent_id: str
     model_name: Optional[str] = None
@@ -65,6 +70,7 @@ class BaseHedgeFundRequest(BaseModel):
     agent_models: Optional[List[AgentModelConfig]] = None
     model_name: Optional[str] = "gpt-4.1"
     model_provider: Optional[ModelProvider] = ModelProvider.OPENAI
+    market_data_provider: Optional[MarketDataProvider] = MarketDataProvider.FINANCIAL_DATASETS
     margin_requirement: float = 0.0
     portfolio_positions: Optional[List[PortfolioPosition]] = None
     api_keys: Optional[Dict[str, str]] = None

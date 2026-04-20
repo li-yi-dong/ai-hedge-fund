@@ -26,6 +26,7 @@ import { useFlowConnection } from '@/hooks/use-flow-connection';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useNodeState } from '@/hooks/use-node-state';
 import { cn, formatKeyboardShortcut } from '@/lib/utils';
+import { MarketDataProvider } from '@/services/types';
 import { type StockAnalyzerNode } from '../types';
 import { NodeShell } from './node-shell';
 
@@ -130,6 +131,11 @@ export function StockAnalyzerNode({
   };
 
   const handlePlay = () => {
+    const savedMarketDataProvider = localStorage.getItem('marketDataProvider');
+    const marketDataProvider = savedMarketDataProvider === MarketDataProvider.TUSHARE_PRO
+      ? MarketDataProvider.TUSHARE_PRO
+      : MarketDataProvider.FINANCIAL_DATASETS;
+
     // Expand bottom panel and set to output tab if backtest
     if (runMode === 'backtest') {
       expandBottomPanel();
@@ -210,6 +216,7 @@ export function StockAnalyzerNode({
         margin_requirement: 0.0, // Default margin requirement
         model_name: undefined,
         model_provider: undefined,
+        market_data_provider: marketDataProvider,
       });
     } else {
       // Use the regular hedge fund API for single run
@@ -227,6 +234,7 @@ export function StockAnalyzerNode({
         // No global model - each agent uses its own model or system default
         model_name: undefined,
         model_provider: undefined,
+        market_data_provider: marketDataProvider,
         start_date: startDate,
         end_date: endDate,
       });

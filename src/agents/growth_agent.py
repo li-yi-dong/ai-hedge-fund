@@ -10,7 +10,7 @@ import statistics
 from langchain_core.messages import HumanMessage
 from src.graph.state import AgentState, show_agent_reasoning
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
+from src.utils.api_key import get_financial_datasets_api_key_from_state
 from src.tools.api import (
     get_financial_metrics,
     get_insider_trades,
@@ -22,7 +22,7 @@ def growth_analyst_agent(state: AgentState, agent_id: str = "growth_analyst_agen
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    api_key = get_financial_datasets_api_key_from_state(state)
     growth_analysis: dict[str, dict] = {}
 
     for ticker in tickers:

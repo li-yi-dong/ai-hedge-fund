@@ -6,6 +6,11 @@ export enum ModelProvider {
   OLLAMA = 'Ollama',
 }
 
+export enum MarketDataProvider {
+  FINANCIAL_DATASETS = 'FINANCIAL_DATASETS',
+  TUSHARE_PRO = 'TUSHARE_PRO',
+}
+
 export interface AgentModelConfig {
   agent_id: string;
   model_name?: string;
@@ -41,6 +46,7 @@ export interface BaseHedgeFundRequest {
   agent_models?: AgentModelConfig[];
   model_name?: string;
   model_provider?: ModelProvider;
+  market_data_provider?: MarketDataProvider;
   margin_requirement?: number;
   portfolio_positions?: PortfolioPosition[];
 }

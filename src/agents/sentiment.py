@@ -4,7 +4,7 @@ from src.utils.progress import progress
 import pandas as pd
 import numpy as np
 import json
-from src.utils.api_key import get_api_key_from_state
+from src.utils.api_key import get_financial_datasets_api_key_from_state
 from src.tools.api import get_insider_trades, get_company_news
 
 
@@ -14,7 +14,7 @@ def sentiment_analyst_agent(state: AgentState, agent_id: str = "sentiment_analys
     data = state.get("data", {})
     end_date = data.get("end_date")
     tickers = data.get("tickers")
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    api_key = get_financial_datasets_api_key_from_state(state)
     # Initialize sentiment analysis for each ticker
     sentiment_analysis = {}
 
