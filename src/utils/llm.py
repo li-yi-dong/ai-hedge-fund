@@ -66,7 +66,10 @@ def call_llm(
                 parsed_result = extract_json_from_response(result.content)
                 if parsed_result:
                     return pydantic_model(**parsed_result)
+                raise ValueError("Model returned no parseable JSON content")
             else:
+                if result is None:
+                    raise ValueError("Model returned no structured output")
                 return result
 
         except Exception as e:
@@ -77,7 +80,10 @@ def call_llm(
                 print(f"Error in LLM call after {max_retries} attempts: {e}")
                 # Use default_factory if provided, otherwise create a basic default
                 if default_factory:
-                    return default_factory()
+                    try:
+                        return default_factory(str(e))
+                    except TypeError:
+                        return default_factory()
                 return create_default_response(pydantic_model)
 
     # This should never be reached due to the retry logic above

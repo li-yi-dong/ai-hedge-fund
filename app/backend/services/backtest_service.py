@@ -231,12 +231,14 @@ class BacktestService:
         provider = get_market_data_provider(self.request)
         api_key = get_market_data_api_key(self.request, provider=provider)
         financial_api_key = get_financial_datasets_api_key(self.request)
+        is_tushare = provider == "TUSHARE_PRO"
 
         for ticker in self.tickers:
             get_prices(ticker, start_date_str, self.end_date, api_key=api_key, provider=provider)
-            get_financial_metrics(ticker, self.end_date, limit=10, api_key=financial_api_key)
-            get_insider_trades(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
-            get_company_news(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
+            if not is_tushare:
+                get_financial_metrics(ticker, self.end_date, limit=10, api_key=financial_api_key)
+                get_insider_trades(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
+                get_company_news(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=financial_api_key)
 
     def _update_performance_metrics(self, performance_metrics: Dict[str, Any]):
         """Update performance metrics using daily returns."""

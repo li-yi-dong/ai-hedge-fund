@@ -239,12 +239,15 @@ def generate_trading_decision(
     prompt = template.invoke(prompt_data)
 
     # Default factory fills remaining tickers as hold if the LLM fails
-    def create_default_portfolio_output():
+    def create_default_portfolio_output(error_message: str | None = None):
         # start from prefilled
         decisions = dict(prefilled_decisions)
+        failure_reason = "LLM error"
+        if error_message:
+            failure_reason = f"LLM error: {str(error_message)[:120]}"
         for t in tickers_for_llm:
             decisions[t] = PortfolioDecision(
-                action="hold", quantity=0, confidence=0.0, reasoning="Default decision: hold"
+                action="hold", quantity=0, confidence=0.0, reasoning=failure_reason
             )
         return PortfolioManagerOutput(decisions=decisions)
 

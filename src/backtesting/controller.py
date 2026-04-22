@@ -46,6 +46,8 @@ class AgentController:
             d = decisions_in.get(ticker, {})
             action = d.get("action", "hold")
             qty = d.get("quantity", 0)
+            confidence = d.get("confidence")
+            reasoning = d.get("reasoning")
             # Basic coercions mirroring Backtester expectations
             try:
                 qty_val = float(qty)
@@ -55,7 +57,17 @@ class AgentController:
                 action = Action(action).value  # validate/coerce
             except Exception:
                 action = Action.HOLD.value  # type: ignore[assignment]
-            normalized_decisions[ticker] = {"action": action, "quantity": qty_val}  # type: ignore[assignment]
+
+            normalized_decision: AgentDecision = {"action": action, "quantity": qty_val}  # type: ignore[assignment]
+            if confidence is not None:
+                try:
+                    normalized_decision["confidence"] = float(confidence)
+                except Exception:
+                    pass
+            if reasoning:
+                normalized_decision["reasoning"] = str(reasoning)
+
+            normalized_decisions[ticker] = normalized_decision
 
         # Preserve any agent-provided analyst signals without modification
         normalized_output: AgentOutput = {

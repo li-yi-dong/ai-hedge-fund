@@ -53,9 +53,11 @@ class PortfolioSnapshot(TypedDict):
 PriceDataFrame = pd.DataFrame
 
 
-class AgentDecision(TypedDict):
+class AgentDecision(TypedDict, total=False):
     action: ActionLiteral
     quantity: float
+    confidence: float
+    reasoning: str
 
 
 AgentDecisions = Dict[str, AgentDecision]
